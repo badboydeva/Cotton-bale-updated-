@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Plus, Upload, History, Trash2, ArrowRight, Play, CheckCircle, 
   Search, Barcode, BrainCircuit, Scale, AlertTriangle, FileText, Info,
-  FastForward, Download, X, List, BarChart3, CheckSquare, Clock
+  FastForward, Download, X, List, BarChart3, CheckSquare, Clock,
+  Calendar, Hash, Weight
 } from 'lucide-react';
 import { Bale, Session, ViewState, SessionConfig } from './types';
 import { Button, Card, Input, Label } from './components/UI';
@@ -585,9 +587,7 @@ export default function App() {
 
     const completedBales = currentSession.bales
         .filter(b => b.status === 'completed')
-        .sort((a, b) => (b.millBaleNumber || 0) - (a.millBaleNumber || 0)); // Descending by Mill Bale # by default sort logic, wait, (b - a) is desc.
-        // Actually, let's just make sure it's Descending so user sees latest.
-        completedBales.sort((a, b) => (b.millBaleNumber || 0) - (a.millBaleNumber || 0));
+        .sort((a, b) => (b.millBaleNumber || 0) - (a.millBaleNumber || 0));
 
     return (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -650,131 +650,182 @@ export default function App() {
     const getLastActivity = (s: Session) => {
         const completed = s.bales.filter(b => b.status === 'completed');
         if (completed.length === 0) return null;
-        const last = completed.sort((a,b) => (new Date(b.scannedAt || 0).getTime() - new Date(a.scannedAt || 0).getTime()))[0];
+        const last = [...completed].sort((a,b) => (new Date(b.scannedAt || 0).getTime() - new Date(a.scannedAt || 0).getTime()))[0];
         return last;
     };
 
+    const calculateSessionWeight = (s: Session) => {
+        return s.bales.reduce((acc, b) => acc + (b.weight || 0), 0);
+    };
+
+    const renderSessionList = (sessionList: Session[], type: 'manual' | 'excel') => {
+        if (sessionList.length === 0) {
+            return <p className="text-slate-500 italic p-6 border border-dashed border-slate-700 rounded-xl text-center">No {type} sessions found.</p>;
+        }
+
+        return (
+            <div className="space-y-4">
+                {sessionList.map(session => {
+                    const last = getLastActivity(session);
+                    const totalWeight = calculateSessionWeight(session);
+                    const completedCount = session.bales.filter(b => b.status === 'completed').length;
+                    const totalCount = session.type === 'excel' ? session.bales.length : completedCount;
+                    const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+                    const accentColor = type === 'manual' ? 'blue' : 'amber';
+                    const borderClass = type === 'manual' ? 'border-l-blue-500' : 'border-l-amber-500';
+
+                    return (
+                        <Card key={session.id} className={`group p-0 overflow-hidden border-l-4 ${borderClass} hover:bg-slate-750 transition-all shadow-lg`}>
+                            <div className="p-5">
+                                <div className="flex flex-col md:flex-row justify-between gap-6">
+                                    <div className="flex-1 space-y-4">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h3 className="font-bold text-xl text-white group-hover:text-blue-400 transition-colors">{session.name}</h3>
+                                                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded tracking-tighter ${type === 'manual' ? 'bg-blue-900/50 text-blue-400' : 'bg-amber-900/50 text-amber-400'}`}>
+                                                        {type}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-3 text-xs text-slate-500">
+                                                    <span className="flex items-center gap-1"><Calendar size={12}/> {new Date(session.createdAt).toLocaleDateString()}</span>
+                                                    <span className="flex items-center gap-1"><Clock size={12}/> {new Date(session.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                                </div>
+                                            </div>
+                                            {type === 'excel' && (
+                                                <div className="text-right">
+                                                    <span className="text-2xl font-bold text-slate-300">{progress}%</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Statistics Grid */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest flex items-center gap-1">
+                                                    <Hash size={10} /> Records
+                                                </span>
+                                                <span className="text-lg font-mono font-bold text-white">
+                                                    {completedCount}{type === 'excel' ? ` / ${totalCount}` : ''}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest flex items-center gap-1">
+                                                    <Weight size={10} /> Weighted
+                                                </span>
+                                                <span className="text-lg font-mono font-bold text-white">
+                                                    {totalWeight.toLocaleString()} <span className="text-[10px] text-slate-500">LBS</span>
+                                                </span>
+                                            </div>
+                                            <div className="hidden sm:flex flex-col">
+                                                <span className="text-[10px] uppercase text-slate-500 font-bold tracking-widest flex items-center gap-1">
+                                                    <Play size={10} /> Last Active
+                                                </span>
+                                                <span className="text-sm font-medium text-slate-300 truncate">
+                                                    {last ? `Bale #${last.millBaleNumber}` : 'New Session'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {type === 'excel' && (
+                                            <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                <div className={`h-full bg-gradient-to-r ${accentColor === 'blue' ? 'from-blue-600 to-blue-400' : 'from-amber-600 to-amber-400'} transition-all duration-700 ease-out`} style={{ width: `${progress}%` }}></div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 border-t md:border-t-0 md:border-l border-slate-700/50 pt-4 md:pt-0 md:pl-6">
+                                        <div className="flex gap-2 w-full md:w-auto">
+                                            <Button variant="ghost" onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }} title="Delete Session" className="text-slate-500 hover:text-red-400 hover:bg-red-950/20">
+                                                <Trash2 size={18} />
+                                            </Button>
+                                            <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleExportSession(session); }} title="Download Excel" className="hidden sm:flex">
+                                                <Download size={18} />
+                                            </Button>
+                                            <Button 
+                                                variant="primary" 
+                                                className={`flex-1 md:flex-none font-bold tracking-wide shadow-lg ${type === 'manual' ? 'bg-blue-600 hover:bg-blue-500' : 'bg-amber-600 hover:bg-amber-500'}`} 
+                                                onClick={() => handleResumeSession(session)}
+                                            >
+                                                {type === 'manual' ? 'RESUME LOT' : 'WORK LOT'}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </Card>
+                    );
+                })}
+            </div>
+        );
+    };
+
     return (
-    <div className="max-w-4xl mx-auto p-4 space-y-8 pb-20">
-      <header className="flex justify-between items-center mb-8">
+    <div className="max-w-5xl mx-auto p-4 space-y-10 pb-20 pt-6">
+      <header className="flex justify-between items-end mb-8 border-b border-slate-800 pb-6">
         <div>
-            <h1 className="text-3xl font-bold text-blue-400">CottonLog</h1>
-            <p className="text-slate-400">Industrial Inventory System</p>
+            <div className="flex items-center gap-3 mb-1">
+                <div className="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-900/40">
+                    <Scale className="text-white" size={24} />
+                </div>
+                <h1 className="text-4xl font-black text-white tracking-tighter italic">COTTONLOG</h1>
+            </div>
+            <p className="text-slate-500 font-medium uppercase tracking-[0.2em] text-xs">Professional Bale Inventory Control</p>
         </div>
-        <button onClick={() => alert("Local-First Architecture: Data is stored in your browser's IndexedDB. No cloud upload happens unless configured.")} className="p-2 text-slate-500 hover:text-white">
-            <Info />
+        <button onClick={() => alert("Local-First Architecture: Data is stored in your browser's IndexedDB. No cloud upload happens unless configured.")} className="p-2 text-slate-500 hover:text-blue-400 transition-colors">
+            <Info size={24} />
         </button>
       </header>
 
-      {/* Action Buttons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button onClick={handleStartManual} className="group p-6 bg-slate-800 rounded-xl border border-slate-700 hover:border-blue-500 transition-all flex flex-col items-center justify-center gap-4">
-            <div className="p-4 rounded-full bg-slate-900 group-hover:bg-blue-900/30 text-blue-400">
-                <Plus size={32} />
+      {/* Main Control Panel */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <button onClick={handleStartManual} className="group relative p-8 bg-slate-800 rounded-2xl border border-slate-700 hover:border-blue-500 transition-all flex items-center gap-6 shadow-xl overflow-hidden active:scale-[0.98]">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                <Plus size={120} />
             </div>
-            <span className="font-semibold text-lg">New Manual Session</span>
-        </button>
-        <button onClick={handleStartExcel} className="group p-6 bg-slate-800 rounded-xl border border-slate-700 hover:border-amber-500 transition-all flex flex-col items-center justify-center gap-4">
-            <div className="p-4 rounded-full bg-slate-900 group-hover:bg-amber-900/30 text-amber-500">
-                <Upload size={32} />
+            <div className="p-5 rounded-2xl bg-slate-900 group-hover:bg-blue-600 text-blue-400 group-hover:text-white transition-all shadow-inner">
+                <Plus size={36} />
             </div>
-            <span className="font-semibold text-lg">Import Excel Inventory</span>
+            <div className="text-left">
+                <h3 className="font-black text-xl text-white uppercase tracking-tight">Manual Lot</h3>
+                <p className="text-slate-400 text-sm">Create a fresh lot from scratch.</p>
+            </div>
         </button>
-      </div>
+        <button onClick={handleStartExcel} className="group relative p-8 bg-slate-800 rounded-2xl border border-slate-700 hover:border-amber-500 transition-all flex items-center gap-6 shadow-xl overflow-hidden active:scale-[0.98]">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                <Upload size={120} />
+            </div>
+            <div className="p-5 rounded-2xl bg-slate-900 group-hover:bg-amber-600 text-amber-500 group-hover:text-white transition-all shadow-inner">
+                <Upload size={36} />
+            </div>
+            <div className="text-left">
+                <h3 className="font-black text-xl text-white uppercase tracking-tight">Import Excel</h3>
+                <p className="text-slate-400 text-sm">Link existing HVI inventory data.</p>
+            </div>
+        </button>
+      </section>
 
-      {/* Manual Sessions Section */}
-      {manualSessions.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-blue-200">
-                <FastForward className="text-blue-500" /> Active Manual Sessions
+      {/* Active Workflows Section */}
+      <section>
+        <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                Active Manual Workflows
             </h2>
-            <div className="space-y-3">
-                {manualSessions.map(session => {
-                    const last = getLastActivity(session);
-                    return (
-                    <Card key={session.id} className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-slate-750 transition-colors border-l-4 border-l-blue-500">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <h3 className="font-bold text-lg text-white">{session.name}</h3>
-                                <span className="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded">Manual</span>
-                            </div>
-                            <div className="text-sm text-slate-400">
-                                {last ? (
-                                    <span>Last: Bale #{last.millBaleNumber} ({last.weight}lbs) • {new Date(last.scannedAt!).toLocaleTimeString()}</span>
-                                ) : 'No bales processed yet'}
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 w-full md:w-auto">
-                            <Button variant="ghost" onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}><Trash2 size={18} /></Button>
-                            <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleExportSession(session); }} title="Download Excel">
-                                <Download size={18} />
-                            </Button>
-                            <Button variant="primary" className="flex-1 md:flex-none" onClick={() => handleResumeSession(session)}>
-                                Continue Lot
-                            </Button>
-                        </div>
-                    </Card>
-                )})}
-            </div>
-          </div>
-      )}
-
-      {/* Excel Lot History Section */}
-      <div>
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-amber-200">
-            <History className="text-amber-500" /> Lot History (Excel)
-        </h2>
-        <div className="space-y-4">
-            {excelSessions.length === 0 && <p className="text-slate-500 italic p-4 border border-dashed border-slate-700 rounded-xl text-center">No Excel lots imported yet.</p>}
-            
-            {excelSessions.map(session => {
-                const total = session.bales.length;
-                const completed = session.bales.filter(b => b.status === 'completed').length;
-                const progress = Math.round((completed / total) * 100);
-                const last = getLastActivity(session);
-
-                return (
-                <Card key={session.id} className="group p-0 overflow-hidden border-l-4 border-l-amber-500 hover:border-amber-400 transition-all">
-                    <div className="p-5 flex flex-col md:flex-row justify-between gap-4">
-                        <div className="flex-1">
-                            <div className="flex justify-between items-start mb-2">
-                                <div>
-                                    <h3 className="font-bold text-lg text-white group-hover:text-amber-400 transition-colors">{session.name}</h3>
-                                    <p className="text-xs text-slate-500 uppercase tracking-wider">{new Date(session.createdAt).toLocaleDateString()}</p>
-                                </div>
-                                <div className="text-right md:hidden">
-                                     <span className="text-2xl font-bold text-slate-200">{progress}%</span>
-                                </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-4 text-sm text-slate-400 mb-3">
-                                <span className="flex items-center gap-1"><CheckCircle size={14} className="text-green-500"/> {completed} / {total} Bales</span>
-                                {last && <span className="flex items-center gap-1 text-slate-500">| Last: {last.id} ({new Date(last.scannedAt!).toLocaleTimeString()})</span>}
-                            </div>
-
-                            {/* Progress Bar */}
-                            <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                                <div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 transition-all duration-500" style={{ width: `${progress}%` }}></div>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-row md:flex-col items-end justify-between gap-2 border-t md:border-t-0 md:border-l border-slate-700 pt-4 md:pt-0 md:pl-4 mt-2 md:mt-0">
-                             <div className="hidden md:block text-2xl font-bold text-slate-200 mb-2">{progress}%</div>
-                             <div className="flex gap-2 w-full md:w-auto">
-                                <Button variant="ghost" onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}><Trash2 size={18} /></Button>
-                                <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleExportSession(session); }} title="Export">
-                                    <Download size={18} />
-                                </Button>
-                                <Button variant="primary" className="flex-1 md:flex-none bg-amber-600 hover:bg-amber-700 focus:ring-amber-500" onClick={() => handleResumeSession(session)}>
-                                    Resume
-                                </Button>
-                             </div>
-                        </div>
-                    </div>
-                </Card>
-            )})}
         </div>
-      </div>
+        {renderSessionList(manualSessions, 'manual')}
+      </section>
+
+      {/* Inventory Lots Section */}
+      <section>
+        <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xs font-black uppercase tracking-[0.3em] text-slate-500 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                Inventory Lot Archives
+            </h2>
+        </div>
+        {renderSessionList(excelSessions, 'excel')}
+      </section>
     </div>
   );
   };
@@ -1121,13 +1172,13 @@ export default function App() {
                 {/* Footer Stats */}
                 {!selectedBale && (
                     <div className="grid grid-cols-2 gap-4 text-sm text-slate-400 pt-8 border-t border-slate-800">
-                        <div className="flex flex-col gap-1">
-                            <span className="flex items-center gap-2"><Scale size={14} /> Total Weight</span>
-                            <span className="text-xl text-white font-mono">{totalWeight.toLocaleString()}</span>
+                        <div className="flex flex-col gap-1 p-4 bg-slate-800/50 rounded-xl border border-slate-700/50 shadow-inner">
+                            <span className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-slate-500"><Weight size={12} /> Running Total Weight</span>
+                            <span className="text-3xl text-white font-mono font-black">{totalWeight.toLocaleString()} <span className="text-xs font-normal text-slate-500">LBS</span></span>
                         </div>
-                         <div className="flex flex-col gap-1">
-                            <span className="flex items-center gap-2"><AlertTriangle size={14} /> Potential Duplicates</span>
-                            <span className="text-xl text-white font-mono">{duplicateCount}</span>
+                         <div className="flex flex-col gap-1 p-4 bg-slate-800/50 rounded-xl border border-slate-700/50 shadow-inner">
+                            <span className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-slate-500"><Hash size={12} /> Bales Processed</span>
+                            <span className="text-3xl text-white font-mono font-black">{currentSession.bales.filter(b => b.status === 'completed').length}</span>
                         </div>
                     </div>
                 )}
