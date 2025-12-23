@@ -1,0 +1,7 @@
+{
+  "name": "Copy of CottonLog: Industrial Bale Manager",
+  "description": "A local-first, industrial-grade cotton bale inventory management system with Excel integration, barcode scanning, and AI quality analysis.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
